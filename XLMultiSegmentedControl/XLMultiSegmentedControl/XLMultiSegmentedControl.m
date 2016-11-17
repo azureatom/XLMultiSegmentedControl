@@ -7,28 +7,41 @@
 //
 
 #import "XLMultiSegmentedControl.h"
+#import "Masonry.h"
 
 @interface XLMultiSegmentedControl()
+@property(strong, nonatomic) UIColor *normalColor;
+@property(strong, nonatomic) UIColor *selectionColor;
 @property(strong, nonatomic) NSMutableArray *labels;//array of UILabel. labels.count = titles.count
 @property(strong, nonatomic) UIView *viewAfterFirstLabel;//覆盖在第一个label后半部分的UIView
 @property(strong, nonatomic) UIView *viewBeforeLastLabel;//覆盖在最后一个label前半部分的UIView
-@property(strong, nonatomic) NSMutableArray *dividers;//array of UIImageView. dividers.count = labels.count - 1
-@property(strong, nonatomic) UIImage *dividerImage;
+@property(strong, nonatomic) NSMutableArray *dividers;//array of UIView. dividers.count = labels.count - 1
 @property(strong, nonatomic) UITapGestureRecognizer *tapGestureRecognizer;
 @end
 
 @implementation XLMultiSegmentedControl
 @synthesize valueChangedBlock;
+@synthesize titles;
 @synthesize normalColor;
 @synthesize selectionColor;
-@synthesize titles;
 @synthesize selectedIndexSet = _selectedIndexSet;
 @synthesize labels;
 @synthesize viewAfterFirstLabel;
 @synthesize viewBeforeLastLabel;
 @synthesize dividers;
-@synthesize dividerImage;
 @synthesize tapGestureRecognizer;
+
+-(id)initWithTitles:(NSArray *)ts normalColor:(UIColor *)nColor selectionColor:(UIColor *)sColor{
+    self = [super init];
+    if (self) {
+        titles = ts;
+        normalColor = nColor;
+        selectionColor = sColor;
+        
+        [self createUI];
+    }
+    return self;
+}
 
 -(void)setSelectedIndexSet:(NSMutableIndexSet *)selectedIndexSet{
     _selectedIndexSet = selectedIndexSet;
@@ -39,70 +52,106 @@
     self.selectedIndexSet = select ? [NSMutableIndexSet indexSetWithIndexesInRange:NSMakeRange(0, self.titles.count)] : [NSMutableIndexSet indexSet];
 }
 
--(void)makeUI{
-    const int shorterWidth = floorf(self.frame.size.width / titles.count);//如果shorterWidth为CGFloat，则某些位置的label和divider贴合不紧密。
-    int numberOfLongerLabel = self.frame.size.width - shorterWidth * titles.count;//前numberOfLongerLabel个labe的长度比后面几个大1.
-    const int longerWidth = numberOfLongerLabel > 0 ? shorterWidth + 1 : shorterWidth;
-    const CGFloat eachHeight = self.frame.size.height;
-    const CGFloat dividerWidth = 1;
-    const CGFloat edgeCornerRadius = 3;
+-(void)createUI{
+    const CGFloat kDividerWidth = 1;
+    const CGFloat kEdgeCornerRadius = 3;
     
     self.layer.borderColor = self.selectionColor.CGColor;
     self.layer.borderWidth = 1;
-    self.layer.cornerRadius = edgeCornerRadius;
+    self.layer.cornerRadius = kEdgeCornerRadius;
     
     _selectedIndexSet = [NSMutableIndexSet new];
     labels = [NSMutableArray new];
     dividers = [NSMutableArray new];
-    dividerImage = [self lineImageWithBodyColor:self.normalColor bodyHeight:eachHeight - 2 endsColor:self.selectionColor endsHeight:1];
     
     //第一个和最后一个label的cornerRadius同self.layer.cornerRadius，并且覆盖宽度为cornerRadius的UIView在第一个label后半部分和最后一个label前半部分。
     //bug:如果文字占满label，则label前或后面的文字可能被上面的UIView遮挡部分。需要改成drawRect方式处理cornerRadius。
     
-    CGFloat x = 0;
     //第一个lable和divider
-    UILabel *firstLabel = [[UILabel alloc] initWithFrame:CGRectMake(x, 0, (numberOfLongerLabel > 0 ? longerWidth : shorterWidth) - dividerWidth, eachHeight)];
+    UILabel *firstLabel = [[UILabel alloc] init];
     firstLabel.text = [titles firstObject];
     firstLabel.textAlignment = NSTextAlignmentCenter;
     firstLabel.font = [UIFont systemFontOfSize:14];
-    firstLabel.layer.cornerRadius = edgeCornerRadius;
+    firstLabel.layer.cornerRadius = kEdgeCornerRadius;
     firstLabel.clipsToBounds = YES;//防止backgroundColor显示到cornerRadius外面去
     [self addSubview:firstLabel];
+    [firstLabel mas_makeConstraints:^(MASConstraintMaker *make) {
+        make.left.equalTo(@0);
+        make.top.equalTo(@0);
+        make.height.equalTo(self);
+    }];
     [labels addObject:firstLabel];
-    viewAfterFirstLabel = [[UIView alloc] initWithFrame:CGRectMake(CGRectGetMaxX(firstLabel.frame) - edgeCornerRadius, 0, edgeCornerRadius, eachHeight)];
-    [self addSubview:viewAfterFirstLabel];
     
-    UIImageView *divider = [[UIImageView alloc] initWithFrame:CGRectMake(CGRectGetMaxX(firstLabel.frame), 0, dividerWidth, eachHeight)];
+    viewAfterFirstLabel = [[UIView alloc] init];
+    [self addSubview:viewAfterFirstLabel];
+    [viewAfterFirstLabel mas_makeConstraints:^(MASConstraintMaker *make) {
+        make.left.equalTo(firstLabel.mas_right).offset(-kEdgeCornerRadius);
+        make.top.equalTo(@0);
+        make.width.equalTo(@(kEdgeCornerRadius));
+        make.height.equalTo(self);
+    }];
+    
+    UIView *divider = [[UIView alloc] init];
     [self addSubview:divider];
+    [divider mas_makeConstraints:^(MASConstraintMaker *make) {
+        make.left.equalTo(firstLabel.mas_right);
+        make.top.equalTo(@0);
+        make.width.equalTo(@(kDividerWidth));
+        make.height.equalTo(self);
+    }];
     [dividers addObject:divider];
-    x += (numberOfLongerLabel-- > 0 ? longerWidth : shorterWidth);
     
     //中间的label和divider
     for(int i = 1; i < titles.count - 1; ++i){
-        UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(x, 0, (numberOfLongerLabel > 0 ? longerWidth : shorterWidth) - dividerWidth, eachHeight)];
+        UILabel *label = [[UILabel alloc] init];
         label.text = titles[i];
         label.textAlignment = NSTextAlignmentCenter;
         label.font = [UIFont systemFontOfSize:14];
         [self addSubview:label];
+        [label mas_makeConstraints:^(MASConstraintMaker *make) {
+            make.left.equalTo(((UIView *)dividers[i - 1]).mas_right);
+            make.top.equalTo(@0);
+            make.width.equalTo(firstLabel);
+            make.height.equalTo(self);
+        }];
         [labels addObject:label];
         
-        UIImageView *divider = [[UIImageView alloc] initWithFrame:CGRectMake(CGRectGetMaxX(label.frame), 0, dividerWidth, eachHeight)];
+        UIView *divider = [[UIView alloc] init];
         [self addSubview:divider];
+        [divider mas_makeConstraints:^(MASConstraintMaker *make) {
+            make.left.equalTo(label.mas_right);
+            make.top.equalTo(@0);
+            make.width.equalTo(@(kDividerWidth));
+            make.height.equalTo(self);
+        }];
         [dividers addObject:divider];
-        x += (numberOfLongerLabel-- > 0 ? longerWidth : shorterWidth);
     }
     
-    //最后一个lable和divider
-    UILabel *lastLabel = [[UILabel alloc] initWithFrame:CGRectMake(x, 0, self.frame.size.width - x, eachHeight)];
+    //最后一个lable
+    UILabel *lastLabel = [[UILabel alloc] init];
     lastLabel.text = [titles lastObject];
     lastLabel.textAlignment = NSTextAlignmentCenter;
     lastLabel.font = [UIFont systemFontOfSize:14];
-    lastLabel.layer.cornerRadius = edgeCornerRadius;
+    lastLabel.layer.cornerRadius = kEdgeCornerRadius;
     lastLabel.clipsToBounds = YES;
     [self addSubview:lastLabel];
+    [lastLabel mas_makeConstraints:^(MASConstraintMaker *make) {
+        make.left.equalTo(((UIView *)dividers.lastObject).mas_right);
+        make.right.equalTo(@0);
+        make.top.equalTo(@0);
+        make.width.equalTo(firstLabel);
+        make.height.equalTo(self);
+    }];
     [labels addObject:lastLabel];
-    viewBeforeLastLabel = [[UIView alloc] initWithFrame:CGRectMake(CGRectGetMinX(lastLabel.frame), 0, edgeCornerRadius, eachHeight)];
+    
+    viewBeforeLastLabel = [[UIView alloc] init];
     [self addSubview:viewBeforeLastLabel];
+    [viewBeforeLastLabel mas_makeConstraints:^(MASConstraintMaker *make) {
+        make.left.equalTo(lastLabel.mas_left);
+        make.top.equalTo(@0);
+        make.width.equalTo(@(kEdgeCornerRadius));
+        make.height.equalTo(self);
+    }];
     
     if (tapGestureRecognizer == nil) {
         tapGestureRecognizer = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(tapped:)];
@@ -133,7 +182,7 @@
 -(void)updateUI{
     for (int i = 0; i < labels.count; ++i) {
         UILabel *label = labels[i];
-        UIImageView *divider = i < labels.count - 1 ? dividers[i] : nil;
+        UIView *divider = i < labels.count - 1 ? dividers[i] : nil;
         
         if ([self.selectedIndexSet containsIndex:i]) {
             label.textColor = self.normalColor;
@@ -148,10 +197,9 @@
             if (divider) {
                 //左右两边都为选中状态的divider，显示clearColor
                 if ([self.selectedIndexSet containsIndex:i + 1]) {
-                    divider.image = self.dividerImage;
+                    divider.backgroundColor = self.normalColor;
                 }
                 else{
-                    divider.image = nil;
                     divider.backgroundColor = self.selectionColor;
                 }
             }
@@ -167,7 +215,6 @@
             }
             
             if (divider) {
-                divider.image = nil;
                 divider.backgroundColor = self.selectionColor;
             }
         }
